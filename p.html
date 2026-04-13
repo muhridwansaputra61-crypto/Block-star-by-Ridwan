@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Star - Rainbow Rain Edition</title>
+    <style>
+        :root {
+            /* Warna grid dibuat semi-transparan agar warna background tembus */
+            --grid-bg: rgba(255, 255, 255, 0.1); 
+            --cell-empty: rgba(0, 0, 0, 0.3);
+            --accent: #00d2ff;
+        }
+
+        body {
+            /* ANIMASI GANTI WARNA BACKGROUND */
+            background: linear-gradient(45deg, #0f2027, #203a43, #2c5364, #0f0c29, #302b63, #24243e);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+            touch-action: none;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Keyframes untuk pergeseran warna */
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* --- 🌧️ Animasi Hujan (Tetap Ada) --- */
+        #rain-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .drop {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.2);
+            width: 1.5px;
+            height: 15px;
+            top: -20px;
+            animation: fall linear infinite;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(110vh); }
+        }
+
+        /* --- 🎮 Layout Game --- */
+        .header { margin-top: 20px; text-align: center; z-index: 10; }
+        #score { font-size: 40px; font-weight: 900; color: #fff; margin: 0; text-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 4px;
+            background: var(--grid-bg);
+            padding: 8px;
+            border-radius: 12px;
+            width: 90vw;
+            max-width: 340px;
+            aspect-ratio: 1 / 1;
+            margin-top: 15px;
+            position: relative;
+            z-index: 10;
+            backdrop-filter: blur(8px); /* Efek kaca (Glassmorphism) */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .cell {
+            background: var(--cell-empty);
+            border-radius: 4px;
+            width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 18px; transition: all 0.2s; aspect-ratio: 1 / 1;
+        }
+
+        .cell.filled { box-shadow: inset -2px -2px rgba(0,0,0,0.2); }
+
+        #dock {
+            display: flex; justify-content: space-around; align-items: center;
+            width: 100%; max-width: 360px; height: 110px;
+            margin-top: 20px; z-index: 10;
+        }
+
+        .piece { display: grid; gap: 2px; cursor: grab; }
+        .p-cell { 
+            width: 22px; height: 22px; border-radius: 3px;
+            display: flex; justify-content: center; align-items: center; font-size: 14px;
+            aspect-ratio: 1 / 1;
+        }
+
+        .dragging {
+            position: fixed !important; z-index: 1000;
+            opacity: 0.9; pointer-events: none;
+            gap: 4px !important; transform: scale(1.1);
+        }
+        .dragging .p-cell { width: 35px !important; height: 35px !important; font-size: 20px; }
+
+        #game-over {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8); display: none;
+            flex-direction: column; justify-content: center; align-items: center; z-index: 2000;
+            backdrop-filter: blur(10px);
+        }
+        .btn-restart {
+            margin-top: 20px; padding: 12px 30px;
+            background: #fff; color: black;
+            border: none; border-radius: 25px; font-weight: bold; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="rain-container"></div>
+
+<div class="header">
+    <div id="score">0</div>
+</div>
+
+<div id="board"></div>
+<div id="dock"></div>
+
+<div id="game-over">
+    <h1 style="color: #ff4444;">GAME OVER</h1>
+    <div id="final-score" style="font-size: 24px;"></div>
+    <button class="btn-restart" onclick="restartGame()">COBA LAGI</button>
+</div>
+
+<script>
+    // --- 🌧️ Rain Logic ---
+    function createRain() {
+        const container = document.getElementById('rain-container');
+        for (let i = 0; i < 80; i++) {
+            const drop = document.createElement('div');
+            drop.className = 'drop';
+            drop.style.left = Math.random() * 100 + 'vw';
+            drop.style.animationDuration = (Math.random() * 1 + 0.5) + 's';
+            drop.style.animationDelay = Math.random() * 2 + 's';
+            drop.style.opacity = Math.random() * 0.3;
+            container.appendChild(drop);
+        }
+    }
+    createRain();
+
+    // --- 🎮 Game Logic ---
+    const boardSize = 8;
+    const boardEl = document.getElementById('board');
+    const dockEl = document.getElementById('dock');
+    const scoreEl = document.getElementById('score');
+    const gameOverEl = document.getElementById('game-over');
+
+    let grid = Array(boardSize).fill().map(() => Array(boardSize).fill(null));
+    let score = 0;
+
+    const shapesInfo = [
+        { data: [[1,1],[1,1]], color: '#FF5F6D', animal: '🐶' },
+        { data: [[1,1,1,1]], color: '#FFC371', animal: '🐱' },
+        { data: [[1,1,1]], color: '#2193b0', animal: '🐭' },
+        { data: [[1,1],[1,0]], color: '#ee9ca7', animal: '🐹' },
+        { data: [[1,1,1],[0,1,0]], color: '#6dd5ed', animal: '🐰' },
+        { data: [[1]], color: '#a8ff78', animal: '🐼' }
+    ];
+
+    function initBoard() {
+        boardEl.innerHTML = '';
+        for (let r = 0; r < boardSize; r++) {
+            for (let c = 0; c < boardSize; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${r}-${c}`;
+                if (grid[r][c]) {
+                    cell.style.backgroundColor = grid[r][c].color;
+                    cell.innerText = grid[r][c].animal;
+                    cell.classList.add('filled');
+                }
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    function canPlace(row, col, shapeData) {
+        for (let r = 0; r < shapeData.length; r++) {
+            for (let c = 0; c < shapeData[r].length; c++) {
+                if (shapeData[r][c]) {
+                    let tr = row + r, tc = col + c;
+                    if (tr < 0 || tr >= boardSize || tc < 0 || tc >= boardSize || grid[tr][tc]) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    function place(row, col, shapeInfo) {
+        shapeInfo.data.forEach((rd, r) => {
+            rd.forEach((v, c) => {
+                if (v) grid[row + r][col + c] = { color: shapeInfo.color, animal: shapeInfo.animal };
+            });
+        });
+        score += 10;
+        checkLines();
+        updateUI();
+    }
+
+    function checkLines() {
+        let rR = [], cR = [];
+        for (let i = 0; i < boardSize; i++) {
+            if (grid[i].every(c => c !== null)) rR.push(i);
+            if (grid.every(r => r[i] !== null)) cR.push(i);
+        }
+        rR.forEach(r => grid[r] = Array(boardSize).fill(null));
+        cR.forEach(c => grid.forEach(r => r[c] = null));
+        if (rR.length || cR.length) score += (rR.length + cR.length) * 100;
+    }
+
+    function setupDrag(el, shapeInfo) {
+        el.dataset.shape = JSON.stringify(shapeInfo.data);
+        el.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            el.classList.add('dragging');
+            const onMove = (me) => {
+                const mt = me.touches[0];
+                el.style.left = (mt.clientX - (el.offsetWidth / 2)) + 'px';
+                el.style.top = (mt.clientY - 120) + 'px';
+            };
+            const onEnd = (ee) => {
+                const pRect = el.getBoundingClientRect();
+                const bRect = boardEl.getBoundingClientRect();
+                el.classList.remove('dragging');
+                el.style.position = 'static';
+                const col = Math.round((pRect.left - bRect.left) / (bRect.width / 8));
+                const row = Math.round((pRect.top - bRect.top) / (bRect.height / 8));
+                if (canPlace(row, col, shapeInfo.data)) {
+                    place(row, col, shapeInfo);
+                    el.remove();
+                    if (dockEl.children.length === 0) fillDock();
+                }
+                window.removeEventListener('touchmove', onMove);
+                window.removeEventListener('touchend', onEnd);
+            };
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('touchend', onEnd);
+        }, { passive: false });
+    }
+
+    function createPiece() {
+        const info = shapesInfo[Math.floor(Math.random() * shapesInfo.length)];
+        const p = document.createElement('div');
+        p.className = 'piece';
+        p.style.gridTemplateColumns = `repeat(${info.data[0].length}, 1fr)`;
+        info.data.forEach(r => r.forEach(v => {
+            const d = document.createElement('div');
+            if(v) { d.className = 'p-cell'; d.style.backgroundColor = info.color; d.innerText = info.animal; }
+            p.appendChild(d);
+        }));
+        setupDrag(p, info);
+        return p;
+    }
+
+    function fillDock() { for(let i=0; i<3; i++) dockEl.appendChild(createPiece()); }
+    function updateUI() { scoreEl.innerText = score; initBoard(); }
+    function restartGame() {
+        grid = Array(boardSize).fill().map(() => Array(boardSize).fill(null));
+        score = 0; updateUI(); dockEl.innerHTML = ''; fillDock();
+        gameOverEl.style.display = 'none';
+    }
+
+    initBoard();
+    fillDock();
+</script>
+</body>
+</html>
